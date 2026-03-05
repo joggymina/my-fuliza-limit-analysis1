@@ -20,7 +20,7 @@ function generateMaskedPhone(): string {
 export default function FulizaBoostPage() {
   const limits = React.useMemo(
     () => [
-      { amount: 5000, fee: 51 },
+      { amount: 5000, fee: 10 },
       { amount: 10000, fee: 159 },
       { amount: 19000, fee: 260 },
       { amount: 32000, fee: 620 },
