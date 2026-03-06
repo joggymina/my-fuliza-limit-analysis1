@@ -1,4 +1,4 @@
-// src/app/api/mock-stk-push/route.ts - Hybrid: real PayHero if env vars set, mock otherwise
+// src/app/api/mock-stk-push/route.ts - Hybrid: real HashPay if env vars set, mock otherwise
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -10,56 +10,71 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Missing fields' }, { status: 400 });
     }
 
-    // Normalize phone
-    let normalizedPhone = phone.replace(/\D/g, '');
-    if (normalizedPhone.startsWith('0')) normalizedPhone = `254${normalizedPhone.slice(1)}`;
-    if (!normalizedPhone.startsWith('254')) normalizedPhone = `254${normalizedPhone}`;
+    // Normalize phone to HashPay required format: 2547XXXXXXXX or 2541XXXXXXXX
+    let normalizedPhone = phone.replace(/\D/g, ''); // remove non-digits
+    if (normalizedPhone.startsWith('0')) {
+      normalizedPhone = `254${normalizedPhone.slice(1)}`;
+    }
+    if (!normalizedPhone.startsWith('254')) {
+      normalizedPhone = `254${normalizedPhone}`;
+    }
+    // Basic validation (9 digits after 254, starting with 7 or 1 for Safaricom/Airtel)
+    if (!/^254[17]\d{8}$/.test(normalizedPhone)) {
+      return NextResponse.json(
+        { ok: false, error: 'Invalid phone number format. Use e.g. 0722xxxxxx, 011xxxxxxx, 2547xxxxxxxx or 2541xxxxxxxx' },
+        { status: 400 }
+      );
+    }
 
     console.log('Received payload:', JSON.stringify(body, null, 2));
+    console.log('Normalized phone:', normalizedPhone);
 
-    // Check if PayHero env vars are set
-    if (process.env.PAYHERO_BASIC_AUTH_TOKEN && process.env.PAYHERO_CHANNEL_ID) {
-      console.log('Using REAL PayHero integration');
+    // Check if HashPay env vars are set
+    if (process.env.HASHPAY_API_KEY && process.env.HASHPAY_ACCOUNT_ID) {
+      console.log('Using REAL HashPay integration');
 
       const payload = {
-        amount: Number(amount),
-        phone_number: normalizedPhone,
-        channel_id: Number(process.env.PAYHERO_CHANNEL_ID),
-        provider: 'm-pesa',
-        external_reference: apiRef,
-        customer_name: 'Test User',
-        callback_url: 'https://my-fuliza-analysis.vercel.app/api/payhero-callback',
+        api_key: process.env.HASHPAY_API_KEY,
+        account_id: process.env.HASHPAY_ACCOUNT_ID,
+        amount: Math.round(Number(amount)), // HashPay expects whole number (integer)
+        msisdn: normalizedPhone,
+        reference: apiRef, // should be unique per transaction
       };
 
-      const res = await fetch('https://backend.payhero.co.ke/api/v2/payments', {
+      const res = await fetch('https://api.hashback.co.ke/initiatestk', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Basic ${process.env.PAYHERO_BASIC_AUTH_TOKEN}`,
         },
         body: JSON.stringify(payload),
       });
 
       const data = await res.json();
+      console.log('HashPay status:', res.status);
+      console.log('HashPay body:', JSON.stringify(data, null, 2));
 
-      console.log('PayHero status:', res.status);
-      console.log('PayHero body:', data);
-
-      if (!res.ok) {
-        return NextResponse.json({ ok: false, error: data?.message || 'PayHero failed' }, { status: res.status });
+      // HashPay success typically has ResponseCode === "0"
+      if (res.ok && data.ResponseCode === "0") {
+        return NextResponse.json({
+          ok: true,
+          message: 'STK push sent via HashPay',
+          data,
+          checkoutId: data.CheckoutRequestID,
+          merchantId: data.MerchantRequestID,
+        });
+      } else {
+        const errorMsg = data?.ResponseDescription || data?.error || 'HashPay request failed';
+        return NextResponse.json({ ok: false, error: errorMsg }, { status: res.status || 400 });
       }
-
-      return NextResponse.json({ ok: true, message: 'STK push sent', data });
     } else {
       // Fallback to pure mock if env vars missing
-      console.log('Using SAFE MOCK (env vars missing)');
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Using SAFE MOCK (HashPay env vars missing)');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // simulate network delay
 
       return NextResponse.json({
         ok: true,
-        message: 'Mock STK push initiated (env vars not set)',
-        trackingId: 'MOCK-' + Date.now()
+        message: 'Mock STK push initiated (HashPay env vars not set)',
+        trackingId: 'MOCK-' + Date.now(),
       });
     }
   } catch (error: any) {
