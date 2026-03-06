@@ -62,10 +62,14 @@ export async function POST(request: Request) {
           checkoutId: data.CheckoutRequestID,
           merchantId: data.MerchantRequestID,
         });
-      } else {
-  const errorMsg = data?.ResponseDescription || data?.message || data?.error || JSON.stringify(data) || 'HashPay request failed';
-  console.error('HashPay full error:', { status: res.status, body: data });
-  return NextResponse.json({ ok: false, error: `HashPay failed: ${errorMsg}` }, { status: res.status || 400 });
+    } else {
+  const errorMsg = data?.ResponseDescription || data?.message || data?.error || JSON.stringify(data) || 'Unknown HashPay error';
+  console.error('HashPay rejected:', {
+    status: res.status,
+    fullBody: data,
+    sentPayload: payload // add this if you log payload earlier
+  });
+  return NextResponse.json({ ok: false, error: `HashPay: ${errorMsg} (check if API key is activated)` }, { status: res.status || 400 });
 }
     } else {
       // Fallback to pure mock if env vars missing
