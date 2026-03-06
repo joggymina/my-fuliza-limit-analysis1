@@ -63,9 +63,10 @@ export async function POST(request: Request) {
           merchantId: data.MerchantRequestID,
         });
       } else {
-        const errorMsg = data?.ResponseDescription || data?.error || 'HashPay request failed';
-        return NextResponse.json({ ok: false, error: errorMsg }, { status: res.status || 400 });
-      }
+  const errorMsg = data?.ResponseDescription || data?.message || data?.error || JSON.stringify(data) || 'HashPay request failed';
+  console.error('HashPay full error:', { status: res.status, body: data });
+  return NextResponse.json({ ok: false, error: `HashPay failed: ${errorMsg}` }, { status: res.status || 400 });
+}
     } else {
       // Fallback to pure mock if env vars missing
       console.log('Using SAFE MOCK (HashPay env vars missing)');
