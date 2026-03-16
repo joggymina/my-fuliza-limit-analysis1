@@ -1,4 +1,4 @@
-// src/app/api/mock-stk-push/route.ts - Hybrid: real PayHero if env vars set, mock otherwise
+// src/app/api/mock-stk-push/route.ts
 import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
@@ -10,60 +10,70 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Missing fields' }, { status: 400 });
     }
 
-    // Normalize phone
+    // Normalize phone to 254XXXXXXXXX format
     let normalizedPhone = phone.replace(/\D/g, '');
     if (normalizedPhone.startsWith('0')) normalizedPhone = `254${normalizedPhone.slice(1)}`;
     if (!normalizedPhone.startsWith('254')) normalizedPhone = `254${normalizedPhone}`;
 
     console.log('Received payload:', JSON.stringify(body, null, 2));
 
-    // Check if PayHero env vars are set
-    if (process.env.PAYHERO_BASIC_AUTH_TOKEN && process.env.PAYHERO_CHANNEL_ID) {
-      console.log('Using REAL PayHero integration');
+    // Check if HashPay env vars are set
+    if (process.env.HASHPAY_API_KEY && process.env.HASHPAY_ACCOUNT_ID) {
+      console.log('Using REAL HashPay integration');
 
       const payload = {
-        amount: Number(amount),
-        phone_number: normalizedPhone,
-        channel_id: Number(process.env.PAYHERO_CHANNEL_ID),
-        provider: 'm-pesa',
-        external_reference: apiRef,
-        customer_name: 'Test User',
-        callback_url: 'https://my-fuliza-analysis.vercel.app/api/payhero-callback',
+        api_key: process.env.HASHPAY_API_KEY,
+        account_id: process.env.HASHPAY_ACCOUNT_ID,
+        amount: amount.toString(),               // HashPay wants string
+        msisdn: normalizedPhone,
+        reference: apiRef,
       };
 
-      const res = await fetch('https://backend.payhero.co.ke/api/v2/payments', {
+      console.log('HashPay payload:', JSON.stringify(payload, null, 2));
+
+      const res = await fetch('https://api.hashback.co.ke/v2/initiatestk', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Basic ${process.env.PAYHERO_BASIC_AUTH_TOKEN}`,
         },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      console.log('HashPay HTTP status:', res.status);
 
-      console.log('PayHero status:', res.status);
-      console.log('PayHero body:', data);
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        data = { raw: await res.text() };
+      }
+
+      console.log('HashPay response:', JSON.stringify(data, null, 2));
 
       if (!res.ok) {
-        return NextResponse.json({ ok: false, error: data?.message || 'PayHero failed' }, { status: res.status });
+        return NextResponse.json(
+          { ok: false, error: data?.message || `HashPay failed with status ${res.status}` },
+          { status: res.status }
+        );
       }
 
       return NextResponse.json({ ok: true, message: 'STK push sent', data });
-    } else {
-      // Fallback to pure mock if env vars missing
-      console.log('Using SAFE MOCK (env vars missing)');
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      return NextResponse.json({
-        ok: true,
-        message: 'Mock STK push initiated (env vars not set)',
-        trackingId: 'MOCK-' + Date.now()
-      });
     }
+
+    // Fallback to mock
+    console.log('Using SAFE MOCK (HashPay env vars missing)');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    return NextResponse.json({
+      ok: true,
+      message: 'Mock STK push initiated',
+      trackingId: 'MOCK-' + Date.now(),
+    });
   } catch (error: any) {
-    console.error('Route error:', error.message || error);
-    return NextResponse.json({ ok: false, error: 'Server error' }, { status: 500 });
+    console.error('Route error:', error.message || error.stack || error);
+    return NextResponse.json(
+      { ok: false, error: error.message || 'Server error' },
+      { status: 500 }
+    );
   }
 }
