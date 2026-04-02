@@ -24,11 +24,11 @@ export async function POST(request: Request) {
         api_key: process.env.HASHBACK_API_KEY_1,
         account_id: process.env.HASHBACK_ACCOUNT_ID_1,
       },
-      {
+      /*{
         name: "Account 2",
         api_key: process.env.HASHBACK_API_KEY_2,
         account_id: process.env.HASHBACK_ACCOUNT_ID_2,
-      },
+      },*/
     ].filter(acc => acc.api_key && acc.account_id); // Remove invalid/missing accounts
 
     if (accounts.length === 0) {
